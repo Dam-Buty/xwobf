@@ -30,8 +30,9 @@
 
 #include "xwobf.h"
 
-MagickWand        *wand = NULL;
-MagickWand    *obs_wand = NULL;
+MagickWand              *wand = NULL;
+MagickWand          *obs_wand = NULL;
+MagickWand    *composite_wand = NULL;
 
 xcb_connection_t *xcb_c = NULL;
 xcb_screen_t   *xcb_scr = NULL;
@@ -178,30 +179,52 @@ void cleanup()
 // Obscure the image!
 void obscure_image(int pixel_size, int fuzzy)
 {
+    long x, y;
+
+    x = MagickGetImageWidth(wand);
+    y = MagickGetImageWidth(wand);
+
+    composite_rectangles(x, y);
+    obscure_windows(x, y, pixel_size, fuzzy);
+}
+
+// Composites all visible rectangles into a single image
+// with a transparent background
+void composite_rectangles(long x, long y)
+{
+    PixelWand *bg = NewPixelWand();
+    PixelSetColor(bg,"none");
+
+    composite_wand = NewMagickWand();
+
+    MagickNewImage(composite_wand, x, y, bg);
+
     for(size_t i = 0; i < rect_size; ++i) {
-        obscure_rectangle(rect[i], pixel_size, fuzzy);
+        rectangle_t *rec = rect[i];
+        if ((obs_wand = CloneMagickWand(wand))) {
+            (void)MagickCropImage(obs_wand, rec->w, rec->h, rec->x, rec->y);
+
+            (void)MagickCompositeImage(composite_wand, obs_wand, OverCompositeOp, rec->x, rec->y);
+
+            obs_wand = DestroyMagickWand(obs_wand);
+        }
     }
 }
 
-// Obscure the area within the given rectangle
-void obscure_rectangle(rectangle_t *rec, int pixel_size, int fuzzy)
+// Obscure the composited image with only the windows
+void obscure_windows(long x, long y, int pixel_size, int fuzzy)
 {
-    if ((obs_wand = CloneMagickWand(wand))) {
-        (void)MagickCropImage(obs_wand, rec->w, rec->h, rec->x, rec->y);
+    // This is where the magick happens
+    (void)MagickResizeImage(composite_wand, x/pixel_size, y/pixel_size,
+                            PointFilter, 0);
 
-        // This is where the magick happens
-        (void)MagickResizeImage(obs_wand, (rec->w)/pixel_size, (rec->h)/pixel_size,
-                PointFilter, 0);
-        if (fuzzy) {
-                (void)MagickBlurImage(obs_wand, 0, 1);
-        }
-        (void)MagickResizeImage(obs_wand, rec->w, rec->h,
-                PointFilter, 0);
-
-        (void)MagickCompositeImage(wand, obs_wand, OverCompositeOp, rec->x, rec->y);
-
-        obs_wand = DestroyMagickWand(obs_wand);
+    if (fuzzy) {
+        (void)MagickBlurImage(composite_wand, 0, 1);
     }
+
+    (void)MagickResizeImage(composite_wand, x, y, PointFilter, 0);
+
+    (void)MagickCompositeImage(wand, composite_wand, OverCompositeOp, 0, 0);
 }
 
 // Check if a window is visible

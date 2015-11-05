@@ -52,7 +52,8 @@ void find_rectangles();
 void free_rectangles();
 
 void obscure_image(int pixel_size, int fuzzy);
-void obscure_rectangle(rectangle_t *rec, int pixel_size, int fuzzy);
+void composite_rectangles(long x, long y);
+void obscure_windows(long x, long y, int pixel_size, int fuzzy);
 
 void print_rectangle(rectangle_t *rec);
 void print_rectangle_array(rectangle_t **rec_arr, size_t size);
